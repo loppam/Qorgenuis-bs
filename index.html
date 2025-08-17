@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Flappy QorGenius — Retro</title>
+  <style>
+    :root{
+      --bg:#1b1f2a;
+      --grid:#23293a;
+      --fg:#e6f2ff;
+      --accent:#89ff6c;
+      --accent2:#5fe4ff;
+      --danger:#ff5566;
+      --shadow:#0c0f15;
+      --scanline:rgba(255,255,255,0.05);
+      --pixel: crisp-edges;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 800px at 50% 10%, #243048 0%, var(--bg) 60%);
+      color:var(--fg); font-family: ui-monospace, Menlo, Monaco, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+      display:grid; place-items:center;
+    }
+
+    .frame{
+      position:relative;
+      width:min(92vw, 520px);
+      aspect-ratio: 9 / 16;
+      border:4px solid #2f3a56;
+      border-radius:10px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 0 0 0 3px #121622, 0 0 0 6px #0f1421;
+      background:
+         linear-gradient(90deg, transparent 0 49%, rgba(255,255,255,0.025) 50%, transparent 51% 100%),
+         repeating-linear-gradient(0deg, #20283e 0 2px, #1c2440 2px 4px);
+      overflow:hidden;
+    }
+
+    canvas{
+      width:100%; height:100%; display:block;
+      image-rendering: pixelated; image-rendering: var(--pixel);
+      background:
+        linear-gradient(#5ea9ff, #2f6bd6 55%, #0f2b70);
+    }
+
+    /* HUD */
+    .hud{
+      position:absolute; inset:0; pointer-events:none; font-weight:700; letter-spacing:0.5px;
+      text-shadow:0 2px 0 var(--shadow), 0 0 10px rgba(0,0,0,.4);
+    }
+    .score{
+      position:absolute; top:10px; left:12px; font-size:18px; color:var(--accent2);
+    }
+    .best{
+      position:absolute; top:10px; right:12px; font-size:18px; color:#ffd166;
+    }
+
+    /* Overlay screens */
+    .overlay{
+      position:absolute; inset:0; display:grid; place-items:center; text-align:center;
+      background:linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.45));
+      padding:18px;
+    }
+    .panel{
+      background:rgba(10,14,24,.8);
+      border:3px solid #2a3555; border-radius:8px; padding:18px 16px;
+      box-shadow: inset 0 0 0 2px #0e1322, 0 10px 30px rgba(0,0,0,.7);
+      max-width:420px;
+    }
+    .title{
+      font-size:22px; margin:0 0 10px; color:var(--accent);
+      text-shadow:0 2px 0 #0a0d16;
+    }
+    .muted{opacity:.85; line-height:1.5}
+    .keys{
+      display:flex; gap:8px; justify-content:center; margin:12px 0 4px;
+      font-size:12px; opacity:.95
+    }
+    .key{
+      padding:6px 10px; border:2px solid #3a476a; border-radius:6px; background:#131a2a; color:#cde3ff;
+      box-shadow:0 2px 0 #0b0f1a;
+    }
+    .cta{
+      margin-top:12px; pointer-events:auto;
+      display:inline-block; text-decoration:none; color:#03150a; font-weight:900;
+      background:linear-gradient(180deg, #8bff77, #48cf61);
+      border:0; padding:10px 14px; border-radius:8px;
+      box-shadow:0 3px 0 #176b2e, 0 0 0 3px #0b2214 inset;
+    }
+    .cta.secondary{background:linear-gradient(180deg,#72d7ff,#3aa4ff); box-shadow:0 3px 0 #14507e, 0 0 0 3px #0b1a24 inset; color:#03101a;}
+
+    /* CRT scanlines + vignette */
+    .crt::after{
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 3px);
+      mix-blend-mode:overlay; opacity:.18;
+    }
+    .vignette::before{
+      content:""; position:absolute; inset:-20%; pointer-events:none;
+      background:radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.6) 100%);
+    }
+
+    /* Tiny footer */
+    .credit{
+      position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:11px; opacity:.65
+    }
+    .credit a{color:#9dd1ff; text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="frame crt vignette" id="frame">
+    <canvas id="game" width="360" height="640" aria-label="Flappy QorGenius"></canvas>
+
+    <div class="hud" aria-hidden="true">
+      <div class="score">SCORE: <span id="score">0</span></div>
+      <div class="best">BEST: <span id="best">0</span></div>
+      <div class="credit">Press <b>SPACE</b> / tap to flap • <a href="https://qorgenius-os.xyz" target="_blank" rel="noreferrer">QorGeniusOS</a></div>
+    </div>
+
+    <!-- Start overlay -->
+    <div class="overlay" id="start">
+      <div class="panel">
+        <h2 class="title">FLAPPY QORGENIUS</h2>
+        <p class="muted">Pilot the <b>QorGenius</b> logo through the gaps.  
+        Collect points. Don’t bonk the pipes.</p>
+        <div class="keys">
+          <div class="key">SPACE</div>
+          <div class="key">CLICK</div>
+          <div class="key">TAP</div>
+        </div>
+        <button class="cta" id="playBtn">START</button>
+        <button class="cta secondary" id="muteBtn" style="margin-left:8px">SOUND: OFF</button>
+      </div>
+    </div>
+
+    <!-- Game over overlay -->
+    <div class="overlay" id="over" style="display:none">
+      <div class="panel">
+        <h2 class="title" style="color:var(--danger)">GAME OVER</h2>
+        <p class="muted">Score: <b id="finalScore">0</b> • Best: <b id="finalBest">0</b></p>
+        <button class="cta" id="againBtn">PLAY AGAIN</button>
+        <button class="cta secondary" id="shareBtn" style="margin-left:8px">SHARE</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Config ----
+    const LOGO_SRC = "https://qorgenius-os.xyz/qor-logo.png";   // QorGenius logo (PNG)
+    const W = 360, H = 640;
+    const PIPE_GAP = 150;
+    const PIPE_WIDTH = 64;
+    const PIPE_SPEED = 2.4;           // world speed
+    const GRAVITY = 0.35;
+    const FLAP = -6.2;
+    const MAX_DROP = 8.5;
+    const PIPE_SPACING_MIN = 260;     // px between pipes
+    const PIPE_SPACING_MAX = 330;
+    const BIRD_SCALE = 0.38;          // scale logo
+    const BIRD_SHRINK_HITBOX = 0.85;  // slightly smaller hitbox for fairness
+
+    // ---- Setup ----
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const startUI = document.getElementById("start");
+    const overUI = document.getElementById("over");
+    const scoreEl = document.getElementById("score");
+    const bestEl  = document.getElementById("best");
+    const finalScore = document.getElementById("finalScore");
+    const finalBest  = document.getElementById("finalBest");
+    const playBtn = document.getElementById("playBtn");
+    const againBtn = document.getElementById("againBtn");
+    const shareBtn = document.getElementById("shareBtn");
+    const muteBtn = document.getElementById("muteBtn");
+
+    // SOUND (tiny blip via WebAudio)
+    let audioOn = false;
+    let actx, osc;
+    function beep(freq=880, dur=0.06){
+      if(!audioOn) return;
+      if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = actx.createOscillator();
+      const g = actx.createGain();
+      o.connect(g); g.connect(actx.destination);
+      o.frequency.value = freq; o.type = "square";
+      g.gain.setValueAtTime(0.05, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.start(); o.stop(actx.currentTime + dur);
+    }
+
+    // Load logo
+    const logo = new Image();
+    logo.crossOrigin = "anonymous";
+    logo.src = LOGO_SRC;
+
+    // Game state
+    let state = "start";
+    let score = 0;
+    let best = +localStorage.getItem("flappyqor_best") || 0;
+
+    let bird = {
+      x: 70,
+      y: H/2,
+      vy: 0,
+      w: 80, h: 80
+    };
+
+    let pipes = [];
+    let nextPipeX = W + 60;
+
+    function reset(){
+      score = 0;
+      bird.x = 70; bird.y = H/2; bird.vy = 0;
+      pipes = [];
+      nextPipeX = W + 60;
+      spawnPipe();
+      spawnPipe();
+      updateHUD();
+    }
+
+    function updateHUD(){
+      scoreEl.textContent = score;
+      bestEl.textContent = best;
+    }
+
+    function spawnPipe(){
+      const gapY = 110 + Math.random() * (H - 220 - PIPE_GAP);
+      const x = (pipes.length ? pipes[pipes.length-1].x : W) +
+                (PIPE_SPACING_MIN + Math.random()*(PIPE_SPACING_MAX-PIPE_SPACING_MIN));
+      pipes.push({x, gapY, passed:false});
+    }
+
+    // Input
+    function flap(){
+      if(state === "start"){ startGame(); return;}
+      if(state !== "play") return;
+      bird.vy = FLAP; beep(1200, 0.05);
+    }
+    canvas.addEventListener("pointerdown", flap);
+    window.addEventListener("keydown", e=>{
+      if(e.code==="Space"){ e.preventDefault(); flap(); }
+      if(e.key==="p" && state==="play") paused = !paused;
+    });
+
+    playBtn.onclick = ()=> startGame();
+    againBtn.onclick = ()=> { overUI.style.display="none"; startUI.style.display="grid"; state="start"; };
+    shareBtn.onclick = ()=>{
+      const text = `I scored ${score} in Flappy QorGenius! Can you beat it?`;
+      const url = location.href;
+      const share = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&via=QorGeniusOS`;
+      window.open(share, "_blank");
+    };
+    muteBtn.onclick = ()=>{
+      audioOn = !audioOn;
+      muteBtn.textContent = `SOUND: ${audioOn? "ON":"OFF"}`;
+      if(audioOn) beep(660,0.05);
+    };
+
+    function startGame(){
+      startUI.style.display="none";
+      overUI.style.display="none";
+      reset();
+      state="play";
+    }
+
+    // World helpers
+    function rectsOverlap(a,b){
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function birdHitbox(){
+      const w = (logo.width||80) * BIRD_SCALE * BIRD_SHRINK_HITBOX;
+      const h = (logo.height||80) * BIRD_SCALE * BIRD_SHRINK_HITBOX;
+      return {x:bird.x + 4, y:bird.y + 4, w, h};
+    }
+
+    // Game loop
+    let last = 0, paused = false;
+    function tick(t){
+      requestAnimationFrame(tick);
+      const dt = Math.min(32, t - last); last = t;
+      if(state !== "play" || paused) { draw(); return; }
+
+      // Bird physics
+      bird.vy = Math.min(MAX_DROP, bird.vy + GRAVITY);
+      bird.y += bird.vy;
+
+      // Pipes move
+      for(const p of pipes){ p.x -= PIPE_SPEED; }
+      if(pipes.length && pipes[0].x + PIPE_WIDTH < -40) pipes.shift();
+      // Ensure next pipe exists ahead
+      if(pipes[pipes.length-1].x < W - (PIPE_SPACING_MIN*0.6)) spawnPipe();
+
+      // Scoring
+      for(const p of pipes){
+        if(!p.passed && p.x + PIPE_WIDTH < bird.x){
+          p.passed = true; score++; beep(700,0.05); updateHUD();
+        }
+      }
+
+      // Collisions
+      const hit = birdHitbox();
+      const ground = bird.y + (logo.height||80)*BIRD_SCALE >= H - 16;
+      const ceiling = bird.y <= 0;
+      if(ground || ceiling){ gameOver(); return; }
+
+      for(const p of pipes){
+        const topRect = {x:p.x, y:0, w:PIPE_WIDTH, h:p.gapY};
+        const botRect = {x:p.x, y:p.gapY + PIPE_GAP, w:PIPE_WIDTH, h:H-(p.gapY+PIPE_GAP)};
+        if(rectsOverlap(hit, topRect) || rectsOverlap(hit, botRect)){ gameOver(); return; }
+      }
+
+      draw();
+    }
+    requestAnimationFrame(tick);
+
+    function gameOver(){
+      beep(220,0.12);
+      state = "over";
+      best = Math.max(best, score);
+      localStorage.setItem("flappyqor_best", String(best));
+      finalScore.textContent = score;
+      finalBest.textContent = best;
+      setTimeout(()=>{ overUI.style.display="grid"; }, 150);
+    }
+
+    // Draw
+    function draw(){
+      // Sky gradient already via CSS; here we add parallax hills/grid
+      ctx.clearRect(0,0,W,H);
+
+      // Distant stars grid (retro)
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      for(let y=0;y<H;y+=16){ ctx.fillRect(0,y, W, 1); }
+      for(let x=0;x<W;x+=16){ ctx.fillRect(x,0, 1, H); }
+
+      // Ground stripe
+      ctx.fillStyle = "#19314f";
+      ctx.fillRect(0, H-16, W, 16);
+      ctx.fillStyle = "#0f1e32";
+      for(let x=0;x<W;x+=8){ ctx.fillRect(x, H-16, 4, 16); }
+
+      // Pipes
+      for(const p of pipes){
+        // Top
+        ctx.fillStyle = "#46ff86";
+        ctx.fillRect(p.x, 0, PIPE_WIDTH, p.gapY);
+        // Cap
+        ctx.fillStyle = "#2fbf5e";
+        ctx.fillRect(p.x-2, p.gapY-12, PIPE_WIDTH+4, 12);
+        // Bottom
+        ctx.fillStyle = "#46ff86";
+        ctx.fillRect(p.x, p.gapY + PIPE_GAP, PIPE_WIDTH, H - (p.gapY + PIPE_GAP));
+        // Cap
+        ctx.fillStyle = "#2fbf5e";
+        ctx.fillRect(p.x-2, p.gapY + PIPE_GAP, PIPE_WIDTH+4, 12);
+      }
+
+      // Bird (logo)
+      const lw = (logo.width||80) * BIRD_SCALE;
+      const lh = (logo.height||80) * BIRD_SCALE;
+      const angle = Math.max(-0.35, Math.min(0.5, bird.vy / 10));
+      ctx.save();
+      ctx.translate(bird.x + lw/2, bird.y + lh/2);
+      ctx.rotate(angle);
+      if(logo.complete) ctx.drawImage(logo, -lw/2, -lh/2, lw, lh);
+      else {
+        ctx.fillStyle="#fff"; ctx.fillRect(-lw/2,-lh/2,lw,lh);
+      }
+      ctx.restore();
+    }
+
+    // Show start screen initially
+    updateHUD();
+  </script>
+</body>
+</html>
